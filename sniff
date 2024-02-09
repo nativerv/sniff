@@ -1,0 +1,52 @@
+#!/bin/sh
+
+set -u
+
+: "${SNIFF_DEFAULT_URL:="https://github.com"}"
+
+info() {
+  printf >&2 'sniff: %s\n' "${1}"
+}
+
+usage() {
+  printf >&2 'usage: sniff [-d REPO_DIR] REPO [DIRNAME]\n'
+  printf >&2 'pull repository located at REPO, put it into your repository directory and open a tmux session in it\n'
+  printf >&2 'options:\n'
+  printf >&2 '  REPO               url or path of the repository, or a shorthand repository name of form `user/repo` (defaults to Github)\n'
+  printf >&2 '  DIRNAME            override name for the repo in your repository directory\n'
+  printf >&2 '  -d REPO_DIR        set your repository directory (where to clone the repository to) to REPO_DIR\n'
+  printf >&2 'environment variables:\n'
+  printf >&2 '  SNIFF_REPO_DIR     set your repository directory (%s)\n' "${SNIFF_REPO_DIR:-<NONE>}"
+  printf >&2 '  SNIFF_DEFAULT_URL  specify default url for shordhand usage (%s)\n' "${SNIFF_DEFAULT_URL:-<NONE>}"
+}
+
+repo_dir="${SNIFF_REPO_DIR-}"
+while :; do
+  case "${1-}" in
+    -h|-\?|--help) usage && exit ;;
+    -d|--repo_dir)
+      [ -z "${2-}" ] && info "ERROR: -r requires an argument" && exit 1
+      repo_dir="${2}"
+      ;;
+    --) shift && break ;;
+    -?*) info "ERROR: unknown option: '${1}'" && usage && exit 1 ;;
+    *) break ;;
+  esac
+  shift
+done
+
+[ -z "${repo_dir}" ] && info "ERROR: no repository directory specified, use --help for usage" && exit 1
+[ -z "${1-}" ] && info "ERROR: no REPO specified" && exit 1
+
+rename=false && [ -n "${2-}" ] && rename=true
+[ "${rename}" = true ] && name="${2}"
+[ "${rename}" = false ] && name="${1##*/}"
+
+mkdir -p "${repo_dir}" || exit 1
+url="${1}"
+{ printf '%s' "${url}" | grep -Evq '^http(s)?://'; } &&
+  url="${SNIFF_DEFAULT_URL}/${url}"
+git -C "${repo_dir}" clone --depth 1 "${url}" "${name}"
+
+export TMUX_SESSIONIZER_PATH="${repo_dir}:${TMUX_SESSIONIZER_PATH-}"
+tmux-sessionizer "${name}"
